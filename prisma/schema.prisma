@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DestinationType {
+  city
+  beach
+  mountains
+  lake
+  nearby
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  name               String
+  avatarUrl          String?
+  isSuperhost        Boolean  @default(false)
+  responseRate       Int?     // %
+  responseTimeMin    Int?     // minutes
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  listings           Listing[]
+  reviewsWritten     Review[]  @relation("reviews_written")
+}
+
+model Listing {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  city          String
+  country       String
+  addressLine   String?
+
+  pricePerNight Int
+  currency      String  @default("USD")
+
+  ratingAvg     Float   @default(0)
+  reviewsCount  Int     @default(0)
+
+  guests        Int     @default(1)
+  bedrooms      Int     @default(0)
+  beds          Int     @default(0)
+  baths         Int     @default(0)
+
+  lat           Float?
+  lng           Float?
+
+  amenities     ListingAmenity[]
+
+  hostId        String
+  host          User     @relation(fields: [hostId], references: [id])
+
+  images        ListingImage[]
+  reviews       Review[] @relation("listing_reviews")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([city, country])
+}
+
+model ListingImage {
+  id        String  @id @default(cuid())
+  url       String
+  order     Int     @default(0)
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, order])
+}
+
+model ListingAmenity {
+  id        String @id @default(cuid())
+  key       String // e.g. "wifi"
+  label     String // e.g. "Fast Wi-Fi"
+  icon      String? // e.g. "wifi"
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  rating      Int      // 1..5
+  text        String?
+  createdAt   DateTime @default(now())
+
+  listingId   String
+  listing     Listing  @relation("listing_reviews", fields: [listingId], references: [id], onDelete: Cascade)
+
+  authorId    String
+  author      User     @relation("reviews_written", fields: [authorId], references: [id])
+}
+
+model Destination {
+  id          String           @id @default(cuid())
+  name        String
+  country     String
+  subtitle    String?
+  imageUrl    String?
+  type        DestinationType  @default(city)
+
+  lat         Float
+  lng         Float
+  popularity  Int              @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type, popularity])
+}
