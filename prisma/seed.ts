@@ -2,71 +2,151 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const pick = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+const randInt = (min: number, max: number) =>
+  Math.floor(Math.random() * (max - min + 1)) + min;
+
 async function main() {
-  const host = await prisma.user.create({
-    data: {
-      name: 'Alex Johnson',
-      avatarUrl: null,
-      isSuperhost: true,
-      responseRate: 98,
-      responseTimeMin: 60,
-    },
-  });
+  // 1) Почистим старое (порядок важен из-за связей)
+  // Если у тебя другие имена моделей, скажи и я подстрою.
+  await prisma.review.deleteMany().catch(() => {});
+  await prisma.listingAmenity.deleteMany().catch(() => {});
+  await prisma.listingImage.deleteMany().catch(() => {});
+  await prisma.listing.deleteMany().catch(() => {});
+  await prisma.destination.deleteMany().catch(() => {});
+  await prisma.user.deleteMany().catch(() => {});
 
-  const listing = await prisma.listing.create({
-    data: {
-      title: 'Cozy Studio in Old Town',
-      description: 'Уютная студия в центре города, рядом с кафе и набережной.',
-      city: 'Prague',
-      country: 'Czech Republic',
-      addressLine: '123 Old Town Street',
-      pricePerNight: 68,
-      currency: 'USD',
-      guests: 2,
-      bedrooms: 1,
-      beds: 1,
-      baths: 1,
-      ratingAvg: 4.8,
-      reviewsCount: 124,
-      hostId: host.id,
-      images: {
-        create: Array.from({ length: 7 }).map((_, i) => ({
-          url: `https://picsum.photos/seed/listing_${i + 1}/1200/800`,
-          order: i,
-        })),
-      },
-      amenities: {
-        create: [
-          { key: 'self_checkin', label: 'Self check-in', icon: 'key' },
-          { key: 'smart_tv', label: 'Smart TV with streaming', icon: 'tv' },
-          { key: 'ac', label: 'Air conditioning', icon: 'snowflake' },
-          { key: 'wifi', label: 'Fast Wi-Fi', icon: 'wifi' },
-          { key: 'kitchen', label: 'Full kitchen', icon: 'utensils' },
-          { key: 'workspace', label: 'Dedicated workspace', icon: 'laptop' },
-        ],
-      },
-      reviews: {
-        create: [
-          {
-            rating: 5,
-            text: 'Amazing place, super clean and cozy.',
-            author: { create: { name: 'Emily' } },
-          },
-          {
-            rating: 5,
-            text: 'Loved the design and the view from the window.',
-            author: { create: { name: 'Sophia' } },
-          },
-          {
-            rating: 4,
-            text: 'Great host, very responsive.',
-            author: { create: { name: 'Liam' } },
-          },
-        ],
-      },
-    },
-  });
+  // 2) Хосты
+  const hosts = await Promise.all(
+    Array.from({ length: 8 }).map((_, i) =>
+      prisma.user.create({
+        data: {
+          name: `Host ${i + 1}`,
+          avatarUrl: null,
+          isSuperhost: Math.random() > 0.6,
+          responseRate: randInt(85, 100),
+          responseTimeMin: randInt(10, 240),
+        },
+      }),
+    ),
+  );
 
+  const places = [
+    { city: 'Prague', country: 'Czech Republic' },
+    { city: 'Istanbul', country: 'Türkiye' },
+    { city: 'Tbilisi', country: 'Georgia' },
+    { city: 'Almaty', country: 'Kazakhstan' },
+    { city: 'Batumi', country: 'Georgia' },
+    { city: 'Dubai', country: 'UAE' },
+    { city: 'Baku', country: 'Azerbaijan' },
+    { city: 'Tashkent', country: 'Uzbekistan' },
+  ];
+
+  const titles = [
+    'Cozy Studio in Old Town',
+    'Modern Loft with Balcony',
+    'Quiet Apartment with View',
+    'Sunny Flat near Downtown',
+    'Minimalist Space for Work',
+    'Family Home close to Metro',
+    'Charming Place in Center',
+    'Budget Room, Great Location',
+  ];
+
+  const amenityPool = [
+    { key: 'self_checkin', label: 'Self check-in', icon: 'key' },
+    { key: 'smart_tv', label: 'Smart TV with streaming', icon: 'tv' },
+    { key: 'ac', label: 'Air conditioning', icon: 'snowflake' },
+    { key: 'wifi', label: 'Fast Wi-Fi', icon: 'wifi' },
+    { key: 'kitchen', label: 'Full kitchen', icon: 'utensils' },
+    { key: 'workspace', label: 'Dedicated workspace', icon: 'laptop' },
+    { key: 'washer', label: 'Washer', icon: 'washer' },
+    { key: 'parking', label: 'Free parking', icon: 'parking' },
+  ];
+
+  // 3) 50 listings
+  const listingIds: string[] = [];
+
+  for (let i = 0; i < 50; i++) {
+    const host = pick(hosts);
+    const place = pick(places);
+
+    const bedrooms = randInt(1, 3);
+    const guests = randInt(1, 6);
+    const beds = Math.max(1, bedrooms + randInt(0, 2));
+    const baths = randInt(1, 2);
+
+    const imgCount = randInt(6, 10);
+    const amenities = [...amenityPool]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, randInt(4, 7));
+
+    const ratingAvg = Math.round((4 + Math.random()) * 10) / 10; // 4.0 - 5.0
+    const reviewsCount = randInt(0, 220);
+
+    // Легкие "рандомные" координаты (не идеально реальные, но хватит для моков)
+    const lat = 20 + Math.random() * 30;
+    const lng = 30 + Math.random() * 50;
+
+    const listing = await prisma.listing.create({
+      data: {
+        title: `${pick(titles)} #${i + 1}`,
+        description:
+          'Уютное место для короткой поездки. Чисто, комфортно, хорошая локация.\n\nРядом есть кафе, магазины и транспорт.',
+        city: place.city,
+        country: place.country,
+        addressLine: `${randInt(10, 999)} ${place.city} Street`,
+        pricePerNight: randInt(25, 240),
+        currency: 'USD',
+        guests,
+        bedrooms,
+        beds,
+        baths,
+        ratingAvg,
+        reviewsCount,
+        lat,
+        lng,
+        hostId: host.id,
+
+        images: {
+          create: Array.from({ length: imgCount }).map((_, idx) => ({
+            url: `https://picsum.photos/seed/listing_${i + 1}_${idx + 1}/1200/800`,
+            order: idx,
+          })),
+        },
+
+        amenities: {
+          create: amenities,
+        },
+
+        reviews: {
+          create:
+            Math.random() > 0.35
+              ? Array.from({ length: randInt(1, 3) }).map((__, rIdx) => ({
+                  rating: randInt(4, 5),
+                  text: [
+                    'Очень понравилось, все как в описании.',
+                    'Отличная локация и комфортная квартира.',
+                    'Хост быстро отвечал, заезд без проблем.',
+                  ][rIdx % 3],
+                  author: {
+                    create: {
+                      name: ['Emily', 'Sophia', 'Liam', 'Noah', 'Olivia'][
+                        randInt(0, 4)
+                      ],
+                    },
+                  },
+                }))
+              : [],
+        },
+      },
+      select: { id: true },
+    });
+
+    listingIds.push(listing.id);
+  }
+
+  // 4) Destinations (оставил твои)
   await prisma.destination.createMany({
     data: [
       {
@@ -112,7 +192,8 @@ async function main() {
     ],
   });
 
-  console.log({ listingId: listing.id });
+  console.log(`✅ Seed done. Listings: ${listingIds.length}`);
+  console.log(`Example listingId: ${listingIds[0]}`);
 }
 
 main()
