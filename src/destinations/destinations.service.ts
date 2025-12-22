@@ -26,22 +26,30 @@ export class DestinationsService {
 
     const raw = await this.prisma.destination.findMany({
       take: 30,
+
       orderBy: [{ popularity: 'desc' }, { updatedAt: 'desc' }],
     });
 
+    console.log('DESTINATIONS COUNT:', raw.length);
+
     const scored = raw
-      .map((d) => ({
-        id: d.id,
-        name: d.name,
-        country: d.country,
-        subtitle: d.subtitle,
-        imageUrl: d.imageUrl,
-        type: d.type,
-        center: { lat: d.lat, lng: d.lng },
-        distanceKm: haversineKm(lat, lng, d.lat, d.lng),
-        popularity: d.popularity,
-      }))
-      // баланс: и близко, и популярно
+      .filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng))
+
+      .map((d) => {
+        const distanceKm = haversineKm(lat, lng, d.lat, d.lng);
+        return {
+          id: d.id,
+          name: d.name,
+          country: d.country,
+          subtitle: d.subtitle,
+          imageUrl: d.imageUrl,
+          type: d.type,
+          center: { lat: d.lat, lng: d.lng },
+          distanceKm,
+          popularity: d.popularity,
+        };
+      })
+      .filter((x) => Number.isFinite(x.distanceKm))
       .sort(
         (a, b) =>
           a.distanceKm * 0.7 -
