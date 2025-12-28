@@ -59,6 +59,22 @@ model Listing {
   images        ListingImage[]
   reviews       Review[] @relation("listing_reviews")
 
+  bookings Booking[]
+
+  maxAdults     Int @default(1)
+  maxChildren   Int @default(0)
+  maxGuests     Int @default(1)
+
+  petsAllowed   Boolean @default(false)
+  maxPets       Int     @default(0)
+
+  isAccessible  Boolean @default(false)
+
+  destinationId String?
+  destination Destination? @relation(fields: [destinationId], references: [id])
+
+  @@index([destinationId])
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -113,8 +129,28 @@ model Destination {
   lng         Float
   popularity  Int              @default(0)
 
+  listings Listing[]
+
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([type, popularity])
+}
+
+model Booking {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  startDate DateTime
+  endDate   DateTime
+
+  adults    Int @default(1)
+  children  Int @default(0)
+  pets      Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([listingId, startDate, endDate])
 }

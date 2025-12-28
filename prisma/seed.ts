@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, DestinationType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -6,17 +6,79 @@ const pick = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 const randInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
+function addDays(d: Date, days: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
 async function main() {
-  // 1) Почистим старое (порядок важен из-за связей)
-  // Если у тебя другие имена моделей, скажи и я подстрою.
+  // чистка: сначала зависимые
   await prisma.review.deleteMany().catch(() => {});
+  await prisma.booking.deleteMany().catch(() => {});
   await prisma.listingAmenity.deleteMany().catch(() => {});
   await prisma.listingImage.deleteMany().catch(() => {});
   await prisma.listing.deleteMany().catch(() => {});
   await prisma.destination.deleteMany().catch(() => {});
   await prisma.user.deleteMany().catch(() => {});
 
-  // 2) Хосты
+  // 1) Destinations
+  const destinations = await Promise.all(
+    [
+      {
+        name: 'Istanbul',
+        country: 'Türkiye',
+        subtitle: 'For sights like Galata Tower',
+        type: 'city' as DestinationType,
+        lat: 41.0082,
+        lng: 28.9784,
+        imageUrl: 'https://picsum.photos/seed/istanbul/800/600',
+        popularity: 90,
+      },
+      {
+        name: 'Tbilisi',
+        country: 'Georgia',
+        subtitle: 'For its bustling nightlife',
+        type: 'city' as DestinationType,
+        lat: 41.7151,
+        lng: 44.8271,
+        imageUrl: 'https://picsum.photos/seed/tbilisi/800/600',
+        popularity: 70,
+      },
+      {
+        name: 'Almaty',
+        country: 'Kazakhstan',
+        subtitle: 'Popular lake destination',
+        type: 'mountains' as DestinationType,
+        lat: 43.222,
+        lng: 76.8512,
+        imageUrl: 'https://picsum.photos/seed/almaty/800/600',
+        popularity: 65,
+      },
+      {
+        name: 'Batumi',
+        country: 'Georgia',
+        subtitle: 'For nature-lovers',
+        type: 'beach' as DestinationType,
+        lat: 41.6168,
+        lng: 41.6367,
+        imageUrl: 'https://picsum.photos/seed/batumi/800/600',
+        popularity: 60,
+      },
+      {
+        name: 'Tashkent',
+        country: 'Uzbekistan',
+        subtitle: 'Big city, great food',
+        type: 'city' as DestinationType,
+        lat: 41.2995,
+        lng: 69.2401,
+        imageUrl: 'https://picsum.photos/seed/tashkent/800/600',
+        popularity: 55,
+      },
+    ].map((d) => prisma.destination.create({ data: d })),
+  );
+
+  // 2) Hosts
   const hosts = await Promise.all(
     Array.from({ length: 8 }).map((_, i) =>
       prisma.user.create({
@@ -30,17 +92,6 @@ async function main() {
       }),
     ),
   );
-
-  const places = [
-    { city: 'Prague', country: 'Czech Republic' },
-    { city: 'Istanbul', country: 'Türkiye' },
-    { city: 'Tbilisi', country: 'Georgia' },
-    { city: 'Almaty', country: 'Kazakhstan' },
-    { city: 'Batumi', country: 'Georgia' },
-    { city: 'Dubai', country: 'UAE' },
-    { city: 'Baku', country: 'Azerbaijan' },
-    { city: 'Tashkent', country: 'Uzbekistan' },
-  ];
 
   const titles = [
     'Cozy Studio in Old Town',
@@ -64,15 +115,28 @@ async function main() {
     { key: 'parking', label: 'Free parking', icon: 'parking' },
   ];
 
-  // 3) 50 listings
-  const listingIds: string[] = [];
+  // 3) Listings + Bookings
+  const listings: {
+    id: string;
+    maxAdults: number;
+    maxChildren: number;
+    maxPets: number;
+  }[] = [];
 
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 60; i++) {
     const host = pick(hosts);
-    const place = pick(places);
+    const dest = pick(destinations);
 
     const bedrooms = randInt(1, 3);
-    const guests = randInt(1, 6);
+    const maxAdults = randInt(1, 5);
+    const maxChildren = randInt(0, 4);
+    const maxGuests = Math.max(1, maxAdults + maxChildren);
+
+    const petsAllowed = Math.random() > 0.6;
+    const maxPets = petsAllowed ? randInt(1, 3) : 0;
+
+    const isAccessible = Math.random() > 0.75;
+
     const beds = Math.max(1, bedrooms + randInt(0, 2));
     const baths = randInt(1, 2);
 
@@ -81,24 +145,24 @@ async function main() {
       .sort(() => Math.random() - 0.5)
       .slice(0, randInt(4, 7));
 
-    const ratingAvg = Math.round((4 + Math.random()) * 10) / 10; // 4.0 - 5.0
+    const ratingAvg = Math.round((4 + Math.random()) * 10) / 10;
     const reviewsCount = randInt(0, 220);
 
-    // Легкие "рандомные" координаты (не идеально реальные, но хватит для моков)
-    const lat = 20 + Math.random() * 30;
-    const lng = 30 + Math.random() * 50;
+    // координаты рядом с destination (чтобы карта выглядела правдоподобно)
+    const lat = dest.lat + (Math.random() - 0.5) * 0.25;
+    const lng = dest.lng + (Math.random() - 0.5) * 0.25;
 
     const listing = await prisma.listing.create({
       data: {
         title: `${pick(titles)} #${i + 1}`,
         description:
-          'Уютное место для короткой поездки. Чисто, комфортно, хорошая локация.\n\nРядом есть кафе, магазины и транспорт.',
-        city: place.city,
-        country: place.country,
-        addressLine: `${randInt(10, 999)} ${place.city} Street`,
+          'Cozy place for a short trip. Clean, comfortable, and well located.\n\nNear cafes, shops and transport.',
+        city: dest.name,
+        country: dest.country,
+        addressLine: `${randInt(10, 999)} ${dest.name} Street`,
         pricePerNight: randInt(25, 240),
         currency: 'USD',
-        guests,
+        guests: maxGuests, // для совместимости твоего UI
         bedrooms,
         beds,
         baths,
@@ -108,6 +172,17 @@ async function main() {
         lng,
         hostId: host.id,
 
+        destinationId: dest.id,
+
+        maxAdults,
+        maxChildren,
+        maxGuests,
+
+        petsAllowed,
+        maxPets,
+
+        isAccessible,
+
         images: {
           create: Array.from({ length: imgCount }).map((_, idx) => ({
             url: `https://picsum.photos/seed/listing_${i + 1}_${idx + 1}/1200/800`,
@@ -115,9 +190,7 @@ async function main() {
           })),
         },
 
-        amenities: {
-          create: amenities,
-        },
+        amenities: { create: amenities },
 
         reviews: {
           create:
@@ -125,9 +198,9 @@ async function main() {
               ? Array.from({ length: randInt(1, 3) }).map((__, rIdx) => ({
                   rating: randInt(4, 5),
                   text: [
-                    'Очень понравилось, все как в описании.',
-                    'Отличная локация и комфортная квартира.',
-                    'Хост быстро отвечал, заезд без проблем.',
+                    'Everything was as described.',
+                    'Great location and very comfortable.',
+                    'Host replied fast, smooth check-in.',
                   ][rIdx % 3],
                   author: {
                     create: {
@@ -140,60 +213,63 @@ async function main() {
               : [],
         },
       },
-      select: { id: true },
+      select: { id: true, maxAdults: true, maxChildren: true, maxPets: true },
     });
 
-    listingIds.push(listing.id);
+    listings.push({
+      id: listing.id,
+      maxAdults: listing.maxAdults,
+      maxChildren: listing.maxChildren,
+      maxPets: listing.maxPets,
+    });
   }
 
-  // 4) Destinations (оставил твои)
-  await prisma.destination.createMany({
-    data: [
-      {
-        name: 'Istanbul',
-        country: 'Türkiye',
-        subtitle: 'For sights like Galata Tower',
-        type: 'city',
-        lat: 41.0082,
-        lng: 28.9784,
-        imageUrl: 'https://picsum.photos/seed/istanbul/800/600',
-        popularity: 90,
-      },
-      {
-        name: 'Tbilisi',
-        country: 'Georgia',
-        subtitle: 'For its bustling nightlife',
-        type: 'city',
-        lat: 41.7151,
-        lng: 44.8271,
-        imageUrl: 'https://picsum.photos/seed/tbilisi/800/600',
-        popularity: 70,
-      },
-      {
-        name: 'Almaty',
-        country: 'Kazakhstan',
-        subtitle: 'Popular lake destination',
-        type: 'mountains',
-        lat: 43.222,
-        lng: 76.8512,
-        imageUrl: 'https://picsum.photos/seed/almaty/800/600',
-        popularity: 65,
-      },
-      {
-        name: 'Batumi',
-        country: 'Georgia',
-        subtitle: 'For nature-lovers',
-        type: 'beach',
-        lat: 41.6168,
-        lng: 41.6367,
-        imageUrl: 'https://picsum.photos/seed/batumi/800/600',
-        popularity: 60,
-      },
-    ],
-  });
+  // 4) Bookings (чтобы поиск по датам был реальным)
+  // Сгенерим часть занятых дат в ближайшие 90 дней
+  const today = new Date();
+  const bookingCreates = [];
 
-  console.log(`✅ Seed done. Listings: ${listingIds.length}`);
-  console.log(`Example listingId: ${listingIds[0]}`);
+  const bookingData: Array<{
+    listingId: string;
+    startDate: Date;
+    endDate: Date;
+    adults: number;
+    children: number;
+    pets: number;
+  }> = [];
+
+  for (const l of listings) {
+    const bookingCount = randInt(0, 6);
+
+    for (let i = 0; i < bookingCount; i++) {
+      const start = addDays(today, randInt(1, 90));
+      const end = addDays(start, randInt(2, 10));
+
+      const adults = randInt(1, Math.max(1, l.maxAdults));
+      const children = randInt(0, Math.max(0, l.maxChildren));
+      const pets = randInt(0, Math.max(0, l.maxPets));
+
+      bookingData.push({
+        listingId: l.id,
+        startDate: start,
+        endDate: end,
+        adults,
+        children,
+        pets,
+      });
+    }
+  }
+
+  if (bookingData.length) {
+    await prisma.booking.createMany({ data: bookingData });
+  }
+
+  await prisma.$transaction(bookingCreates);
+
+  console.log(`✅ Seed done.`);
+  console.log(`Destinations: ${destinations.length}`);
+  console.log(`Listings: ${listings.length}`);
+  console.log(`Bookings: ${bookingCreates.length}`);
 }
 
 main()
